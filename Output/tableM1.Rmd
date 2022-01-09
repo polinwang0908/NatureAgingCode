@@ -1,0 +1,69 @@
+---
+output: word_document
+---
+
+
+```{r fig.asp=0.6, fig.show='hold', fig.width=12, message=FALSE, warning=FALSE, ,echo=FALSE, dpi=300, include=FALSE}
+rm(list=ls())
+source("setCountries.R")
+library(data.table)
+library(lmtest)
+library(tidyverse)
+library(broom)
+sex = c('Male','Female')
+backtest = FALSE
+source("readMortalityData.R")
+
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+library(flextable)
+library(purrr)
+library(tidyverse)
+# Print to word
+set_flextable_defaults(
+  font.family = "calibri", 
+  font.size = 8,
+  font.color = "black",
+  table.layout = "fixed",
+  digits = 0,
+  theme_fun = "theme_booktabs",
+  padding.bottom  = 1,
+  padding.top = 1,
+  padding.left = 1,
+  padding.right = 1,
+  big.mark = ""
+)
+TT %>% 
+  filter(Sex=='Female') %>% 
+  group_by(Country) %>% 
+  dplyr::summarise(`Start year` = min(Year),
+                   `End year` = max(Year)) %>% 
+  full_join(
+  TT %>% 
+  filter(Sex=='Male') %>% 
+  group_by(Country,YoB) %>% 
+  dplyr::summarise(n = n(),
+                   Year = max(Year)) %>% 
+  group_by(Country) %>%
+  dplyr::summarise(`Extinct cohorts start year` = min(YoB[n==51]),
+                   `Extinct cohorts end year` = max(YoB[n==51]),
+                   `Prior A start year` = min(YoB[n==51]),
+                   `Prior A end year` = max(Year)-90,
+                   `Prior B start year` = max(1869,min(YoB[n==51])),
+                   `Prior B end year` = max(Year)-90)
+  ) %>%
+  flextable() %>% 
+  set_header_labels(`Extinct cohorts start year` = "First year of birth",
+                   `Extinct cohorts end year` = "Final year of birth",
+                   `Prior A start year` = "First year of birth",
+                   `Prior A end year` = "Final year of birth",
+                   `Prior B start year` = "First year of birth",
+                   `Prior B end year` = "Final year of birth") %>%
+  add_header_row(colwidths = c(1,2,2,2,2),values = c("","Data period","Extinct cohorts","Prior A","Prior B")) %>%
+   align(align = "right", part = "header") %>%
+  line_spacing(space = 1, part = "all") %>% 
+  autofit()
+
+```

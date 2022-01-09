@@ -1,0 +1,21 @@
+countries = c(
+  "Australia",
+  "Austria",
+  "Belgium",
+  "Canada",
+  "Denmark",
+  "Finland",
+  "France",
+  "Ireland",
+  "Italy",
+  "Japan",
+  "Netherlands",
+  "NewZealand",
+  "Norway",
+  "Portugal",
+  "Spain",
+  "Sweden",
+  "Switzerland",
+  "UK",
+  "USA"
+)

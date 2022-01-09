@@ -1,0 +1,72 @@
+---
+output: word_document
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+library(tidyverse)
+backtest = FALSE
+source("setCountries.R")
+source("readMortalityData.R")
+
+TT = TT %>% dplyr::rename("cohort" = "YoB") %>%
+  left_join(map_dfr(countries, function(cc) {
+    map_dfr(c("Male", "Female"), function(ss) {
+      load(paste0('Estimates/priorA/c', cc, ss, 'B0B1var.rData'))
+      numParms = 2
+      x = result$x
+      sigma = result$sigma
+      modelCountry = result$modelCountry
+      numAllCohort = modelCountry[[1]]$number
+      prior_allcohorts = data.frame(t(matrix(x, numParms))) %>%
+        `colnames<-`(c("b0", "b1")) %>%
+        mutate(cohort = modelCountry[[1]]$cohort,
+               Sex = ss,
+               Country = cc)
+    })
+  })) %>% dplyr::mutate(
+    fitted = B0 * b0 + B1 * b1,
+    logmx = log(mx),
+    resids = logmx - fitted
+  ) %>% group_by(Country, Sex, cohort)
+
+
+temp = TT %>% group_by(Country, Sex, cohort) %>%
+  dplyr::summarise(
+    num = n(),
+    rsquared = 1 - var(resids) / var(logmx),
+    RMSE =  (sum(resids ^ 2) / n()) ^ 0.5
+  ) %>%
+  filter(num == 51)
+
+
+```
+
+```{r ,echo=FALSE, warning=FALSE, dpi=300, fig.width=12, fig.asp=0.6,fig.show='hold', message=FALSE, include=TRUE}
+temp %>%
+  ungroup() %>%
+  filter(rsquared %in% c(min(rsquared), max(rsquared))) %>%
+  mutate(R = ifelse(rsquared == max(rsquared), "Max rsquared:", "Min rsquared:")) %>% left_join(TT, by = c("Country", "Sex", "cohort")) %>%
+  unite("Type", c(R, Country, Sex, cohort), sep = " ") %>%
+  ggplot() +
+  geom_point(aes(x = Age, y = logmx), alpha = 0.5) +
+  geom_line(aes(x = Age, y = fitted), color = 2) + facet_grid(~ Type)
+```
+
+
+```{r fig.asp=0.6, fig.show='hold', fig.width=12, message=FALSE, warning=FALSE ,echo=FALSE, dpi=300, include=TRUE}
+temp %>% 
+  filter(cohort %in% seq(1701, 1970, 10)) %>%
+  ggplot() +
+  geom_boxplot(aes(x = cohort, y = rsquared, group = cohort)) +
+  ylab("R squared") +
+  xlab("Year of birth")
+```
+
+```{r fig.asp=0.6, fig.show='hold', fig.width=12, message=FALSE, warning=FALSE ,echo=FALSE, dpi=300, include=TRUE}
+temp %>% 
+  filter(cohort %in% seq(1701, 1970, 10)) %>%
+  ggplot() +
+  geom_boxplot(aes(x = cohort, y = RMSE, group = cohort)) +
+  ylab("RMSE") +
+  xlab("Year of birth") 
+```

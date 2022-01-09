@@ -1,0 +1,106 @@
+---
+output: word_document
+---
+
+
+
+```{r, echo = FALSE, results = 'asis', warning=FALSE, message=FALSE}
+rm(list = ls())
+library(tidyverse)
+library(knitr)
+library(flextable)
+source("sampleMH.R")
+LE50 = function(lambda, delta) {
+  # b0:lambda
+  # b1:delta
+  (1 / delta) *
+    exp(exp(lambda) / delta) *
+    (expint::expint(exp(lambda) / delta) - expint::expint(2 / 3 / delta)) +
+    1.5 * exp((exp(lambda) - 2 / 3) / delta)
+}
+source("setCountries.R")
+
+temp = map_dfr(c(countries), function(cc) {
+  map_dfr(c("Male", "Female"), function(ss) {
+    load(paste0('Estimates/priorA/c', cc, ss, 'B0B1var.rData'))
+    numParms = 2
+    modelCountry = result$modelCountry
+    load(paste0('MH/MHc', cc, ss, 'var.rData'))
+    z = result$zSample
+    Total = sum(!is.na(z[1,]))
+    sample = z[,seq(burnin + 1,Total,everyTh)]
+    xSample = map_dfr(1:dim(sample)[2], function(i) {
+      parms = t(matrix(sample[1:(NROW(sample) - 2), i], 2)) %>%
+        data.frame() %>%
+        `colnames<-`(c("B0", "B1")) %>%
+        mutate(
+          cohort = modelCountry[[1]]$cohort,
+          sim = i,
+          A1 = case_when(
+            cohort <= 1960 ~ dplyr::lag(B1, n = 10, order_by = cohort),
+            TRUE ~ B1[cohort == 1960]
+          ),
+          A0 = case_when(
+            cohort <= 1960 ~ dplyr::lag(B0, n = 10, order_by = cohort),
+            TRUE ~ B0[cohort == 1960]
+          ),
+          gamma0 = B0,
+          gamma1 = A1 * (log(2 / 3) - B0) / (log(2 / 3) - A0),
+          Compression = LE50(gamma0, gamma1) - LE50(A0, A1),
+          Postponement = LE50(B0, B1) - LE50(gamma0, gamma1),
+          omega = 50 - B0 / B1,
+          Prior = "The earlest complete cohort-1929",
+          Sex = ss,
+          Country = cc
+        )
+      
+    })
+  })
+})
+```
+
+```{r echo=FALSE, fig.asp=0.6, fig.show='hold', fig.width=12, message=FALSE, warning=FALSE, dpi=300}
+temp0 = temp %>%
+  drop_na() %>%
+  group_by(Country, Sex) %>%
+  filter(cohort %in% c(seq(1700, 1970, 10), max(cohort)),
+         Prior == "The earlest complete cohort-1929") %>%
+  mutate(cohort = ifelse(cohort > 1960, 1970, cohort)) %>%
+  pivot_longer(cols = c(Compression, Postponement),
+               names_to = "Decomposition") %>%
+  group_by(Country, Sex, cohort, Decomposition) %>%
+  dplyr::summarise(
+    std = sd(value),
+    Mean = median(value),
+    Output = paste0(
+      formatC(Mean, digits = 1, format = "f"),
+      "±",
+      formatC(1.96 * std, digits = 1, format = "f")
+    )
+  ) %>%
+  ggplot(aes(x = cohort, y = Country)) + geom_tile(aes(fill = Mean) , colour = "white") +
+  scale_y_discrete(limits = rev) +
+  scale_fill_gradient2(
+    name = "Years",
+    high = "#B2182B",
+    low = "#2166AC",
+    mid = 'white',
+    na.value = "white"
+  ) +
+  theme_grey(base_size = 9) +
+  scale_x_continuous(limits = c(1700, 1975),
+                     breaks = seq(1700, 1970, 30)) +
+  xlab("Birth year (end of 10-year period)") +
+  facet_grid(Sex ~ fct_relevel(Decomposition, 'Postponement', 'Compression'),
+             labeller = as_labeller(
+               c(
+                 "Compression" = "Panel B: Change in remaining base life expectancy at age 50 due to mortality compression",
+                 "Postponement" = "Panel A: Change in remaining base life expectancy at age 50 due to mortality postponement",
+                 "Male" = "Male",
+                 "Female" = "Female"
+               )
+             ))
+print(temp0)
+```
+
+
