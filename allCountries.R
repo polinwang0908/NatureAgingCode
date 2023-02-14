@@ -63,4 +63,4 @@ result=list(x=x,
             AIC=AIC,
             BIC=BIC)
 
-save(result,file=paste0("Estimates/",savePath,"/c",countries[1],sex[ss],"B0B1var",ifelse(backtest!=FALSE,backtest,""),".rData"))
+save(result,file=paste0("Estimates/",startAge,endAge,"/",savePath,"/c",countries[1],sex[ss],"B0B1var",ifelse(backtest!=FALSE,backtest,""),".rData"))

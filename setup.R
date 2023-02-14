@@ -61,10 +61,10 @@ modelCountry = lapply(1:numContr, function(i) {
   if(pp!='C') varData = modelCountry[[i]]$varData
   
   x0.mini    = rep(0,NROW(varData))
-  varModel   = VAR(varData)#,exogen=x0.mini)
+  varModel   = vars::VAR(varData)#,exogen=x0.mini)
   kappa.mini = rep(0,numParms)
-  gamma.mini = Bcoef(varModel)[,1:numParms]
-  mu.mini    = Bcoef(varModel)[,numParms+1]
+  gamma.mini = vars::Bcoef(varModel)[,1:numParms]
+  mu.mini    = vars::Bcoef(varModel)[,numParms+1]
   sigma.mini = ar.ols(varData,order=1)$var.pred
   
   L = cbind(Diagonal((number-1)*numParms,-1),matrix(0,(number-1)*numParms,numParms))+

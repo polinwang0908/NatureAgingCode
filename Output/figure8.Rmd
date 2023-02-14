@@ -1,0 +1,325 @@
+---
+output:
+  word_document:
+    keep_md: true
+---
+
+
+
+```{r, echo = FALSE, results = 'asis', warning=FALSE, message=FALSE}
+rm(list=ls())
+library(haven)
+library(ggrepel)
+library(expint)
+library(latex2exp)
+library(tidyverse)
+source("sampleMH.R")
+source("setCountries.R")
+startAge = 50
+endAge = 100
+LE50 = function(lambda,delta){
+  # b0:lambda 
+  # b1:delta
+  (1/delta)*
+    exp(exp(lambda)/delta)*
+    (expint::expint(exp(lambda)/delta)-expint::expint(2/3/delta))+
+    1.5*exp((exp(lambda)-2/3)/delta)
+} 
+
+p1Data = map_dfr(c(countries),function(cc){
+  map_dfr(c("Male","Female"),function(ss){
+    load(paste0('Estimates/', startAge, endAge, '/priorC/c', cc, ss, 'B0B1var.rData'))
+    numParms = 2
+    x = result$x
+    sigma = result$sigma
+    modelCountry = result$modelCountry
+    numAllCohort = modelCountry[[1]]$number
+    priorC = data.frame(t(matrix(x,numParms))) %>% 
+      `colnames<-`(c("B0","B1")) %>%
+      mutate(cohort = modelCountry[[1]]$cohort,
+             Prior = "Prior C")
+    
+    load(paste0('Estimates/', startAge, endAge, '/priorB/c', cc, ss, 'B0B1var.rData'))
+    numParms = 2
+    x = result$x
+    sigma = result$sigma
+    modelCountry = result$modelCountry
+    numAllCohort = modelCountry[[1]]$number
+    prior1869_1929 = data.frame(t(matrix(x,numParms))) %>% 
+      `colnames<-`(c("B0","B1")) %>%
+      mutate(cohort = modelCountry[[1]]$cohort,
+             Prior = "Prior B")
+    
+    load(paste0('Estimates/', startAge, endAge, '/priorA/c', cc, ss, 'B0B1var.rData'))
+    numParms = 2
+    x = result$x
+    sigma = result$sigma
+    modelCountry = result$modelCountry
+    numAllCohort = modelCountry[[1]]$number
+    prior_allcohorts = data.frame(t(matrix(x,numParms))) %>% 
+      `colnames<-`(c("B0","B1")) %>%
+      mutate(cohort = modelCountry[[1]]$cohort,
+             Prior = "Prior A")
+    
+    temp = do.call(bind_rows, list(prior_allcohorts,prior1869_1929,priorC)) %>%
+      mutate(Sex = ss,
+             Country = cc)
+  })
+})
+
+p3Data = map_dfr(c(countries),function(cc){
+  map_dfr(c("Male","Female"),function(ss){
+    load(paste0('Estimates/', startAge, endAge, '/priorA/c', cc, ss, 'B0B1var.rData'))
+    numParms = 2
+    modelCountry = result$modelCountry
+    load(paste0('MH/', startAge, endAge,'/MHc',cc,ss,'var.rData'))
+    z = result$zSample
+    Total = sum(!is.na(z[1,]))
+    sample = z[,seq(burnin + 1,Total,everyTh)]
+    xSample = map_dfr(1:dim(sample)[2],function(i){
+      parms = t(matrix(sample[1:(NROW(sample)-2),i],2)) %>%
+        data.frame() %>% 
+        `colnames<-`(c("B0","B1")) %>%
+        mutate(Country = cc,
+               Sex = ss,
+               cohort = modelCountry[[1]]$cohort,
+               sim = i
+               )
+      
+    })    
+  })
+}) %>%
+  group_by(Country, Sex, sim) %>%
+  mutate(minCohort = min(cohort),
+         minDecade = minCohort+10-minCohort%%10,
+         A1 = case_when(cohort==minDecade~B1[cohort==minCohort],
+                        cohort<=1960~dplyr::lag(B1, n = 10, order_by = cohort),
+                        TRUE~B1[cohort==1960]),
+         A0 = case_when(cohort==minDecade~B0[cohort==minCohort],
+                        cohort<=1960~dplyr::lag(B0, n = 10, order_by = cohort),
+                        TRUE~B0[cohort==1960]),
+         gamma0 = B0,
+         gamma1 = A1*(log(2/3)-B0)/(log(2/3)-A0),
+         compression = LE50(gamma0,gamma1)-LE50(A0,A1),
+         postponement = LE50(B0,B1)-LE50(gamma0,gamma1),
+         gamma = 50 + (log(2/3)-B0)/B1
+  ) 
+
+MaximumLivedPeople = read_dta("Data/MaximumLivedPeopleAll.dta") %>%
+  dplyr::mutate(Country = dplyr::recode(dcountry, 
+                                        "AUT" = "Austria",
+                                        "AUS" = "Australia",
+                                        "BEL" = "Belgium",
+                                        "CAN" = "Canada",
+                                        "DNK" = "Denmark",
+                                        "FIN" = "Finland",
+                                        "FRA" = "France",
+                                        "DEU" = "Germany",
+                                        "IRE" = "Ireland",
+                                        "ITA" = "Italy",
+                                        "JPN" = "Japan",
+                                        "JAP" = "Japan",
+                                        "NOR" = "Norway",
+                                        "ESP" = "Spain",
+                                        "SWE" = "Sweden",
+                                        "SWZ" = "Switzerland",
+                                        "NET" = "Netherlands",
+                                        "POR" = "Portugal",
+                                        "USA" = "USA",
+                                        "EW" = "UK"),
+                Sex = dplyr::recode(sex, "F" = "Female",
+                                    "M" = "Male"), 
+                # alive = recode(alive, "Alive" = "Y",
+                #                "Passed away" = "N"),
+                alive = factor(alive, levels = c("N", "Y"))
+  ) %>%
+  dplyr::rename(cohort = byear) %>% 
+  dplyr::rename(Alive = alive) %>% 
+  dplyr::select(Sex, Country, maxage, cohort, Alive) %>%
+  dplyr::filter(Country%in%countries)
+
+merged_all_double = map_dfr(c(countries), function(cc) {
+  map_dfr(c("Male", "Female"), function(ss) {
+    read_rds(paste0("Estimates/", startAge, endAge, "/CI/", cc, ss, "CI.rds")) 
+  })
+}) %>% drop_na()
+
+gammas = p3Data %>%
+  group_by(Country, Sex, cohort) %>%
+  dplyr::summarise(upper = quantile(gamma, 0.975),
+                   lower = quantile(gamma, 0.025))
+
+CohortLE50 = read_rds("Data/CohortLE50.rds") %>%
+  dplyr::rename("cohort" = "YoB") %>%
+  dplyr::group_by(Country, Sex) %>%
+  dplyr::mutate(minCohort = min(cohort),
+                minDecade = minCohort + 10 - minCohort%%10,
+                lageLE =  case_when(cohort==minDecade~LE50[cohort==minCohort],
+                                    TRUE~dplyr::lag(LE50, n = 10, order_by = cohort)),
+                `LE actual change` = LE50 -lageLE) %>%
+ dplyr::filter(cohort%in%seq(1700,1970,10))
+# ------------------------------------------------------------------------------
+# Plot function
+plotFun = function(ss){
+  maxPeriod = 2021
+  p2Data = merged_all_double %>%
+    dplyr::filter(Sex == ss) %>%
+    dplyr::select(Country, Sex, cohort, upper, lower) %>%
+    dplyr::mutate(CI = "maxLife") %>%
+    bind_rows(gammas %>% filter(Sex == ss) %>% mutate(CI = "gamma"))
+  p1 = p1Data %>% filter(Sex == ss) %>%
+    ggplot(aes(x = B0, y = B1, color = Prior)) +
+    geom_point(alpha = 0.5, size = 0.8) +
+    geom_label_repel(
+      data = p1Data  %>% filter(Sex == ss) %>% filter(Prior == "Prior A", cohort %in%
+                                                        seq(1700, 1960, 25)),
+      aes(label = cohort),
+      box.padding = 0.5,
+      max.overlaps = Inf,
+      color = "black"
+    ) +
+    facet_wrap( ~ Country, ncol = 4) +
+    xlab(TeX(r'($\lambda_c$)')) +
+    ylab(TeX(r'($\delta_c$)')) + theme(
+      legend.position = "bottom",
+      legend.title = element_text(size =
+                                    9),
+      legend.text = element_text(size = 9)
+    ) +
+    ggtitle(paste0(ss, "s"))
+  
+  
+  p1
+  
+  
+  
+  p2 = p2Data %>%
+    ggplot() +
+    geom_ribbon(aes(
+      x = cohort,
+      ymin = lower,
+      ymax = upper,
+      fill = CI
+    ), alpha = 0.5) +
+    
+    facet_wrap( ~ Country, ncol = 4) +
+    geom_point(
+      data = MaximumLivedPeople %>% filter(Sex == ss),
+      aes(x = cohort , y = maxage, color = Alive),
+      alpha = 0.7,
+      size = 0.8
+    ) + 
+    scale_color_manual(
+      name = "Longest-lived individual per cohort",
+      values = c(1, "springgreen4"),
+      labels = c("Dead before 2021", "Alive in 2021"),
+      drop = FALSE
+    ) +
+    scale_fill_manual(
+      name = "95% CI’s for",
+      values = c(2, 1),
+      labels = list(
+        TeX(r'($\Lambda_c$ (age at which mortality hazard first reaches 2/3))'),
+        TeX(r'($M_c$ (maximum age at death))')
+      ),
+      drop = FALSE
+    ) +
+    
+    scale_x_continuous(breaks = seq(1700, 1975, 50)) +
+    theme(
+      legend.position = "bottom",
+      legend.title = element_text(size = 9),
+      legend.text = element_text(size = 9)
+    ) + 
+    ylab("Years") +
+    xlab("Birth year") +
+    geom_polygon(
+      data = data.frame(x = 1700:maxPeriod, y = (maxPeriod - 1700):0) %>% tibble::add_row(x = c(maxPeriod, 1700), y = c(Inf, Inf)),
+      aes(x = x, y = y),
+      fill = "grey",
+      alpha = 0.4
+    ) +
+    coord_cartesian(xlim = c(1700, 1975), ylim = c(95, 150)) +
+    ggtitle(paste0(ss, "s"))
+  
+  p2
+  
+  p3 = p3Data %>% filter(Sex == ss) %>%
+    group_by(Country, Sex) %>%
+    filter(cohort %in% c(seq(1700, 1970, 10), max(cohort))) %>%
+    mutate(cohort = ifelse(cohort > 1960, 1970, cohort)) %>%
+    pivot_longer(cols = c(compression, postponement),
+                 names_to = "type") %>%
+    group_by(Country, cohort, Sex, type) %>%
+    dplyr::summarise(
+      middle = median(value),
+      upper.dist = quantile(value, 0.975, na.rm = TRUE) - middle,
+      lower.dist = middle - quantile(value, 0.025, na.rm =
+                                       TRUE)
+    ) %>%
+    group_by(Country, Sex, cohort) %>%
+    arrange(Country, Sex, cohort, type) %>%
+    dplyr::mutate(
+      type = factor(type, levels = c("postponement", "compression")),
+      cummean = case_when(cumprod(middle) >= 0 ~ cumsum(middle),
+                          TRUE ~ middle),
+      ymin = cummean - lower.dist,
+      ymax = cummean + upper.dist,
+      type = dplyr::recode(type, "compression" = "Due to compression", "postponement" = "Due to postponement")
+    ) %>%
+    ggplot() +
+    geom_bar(aes(
+      x = cohort,
+      y = middle,
+      fill = type,
+      group = type
+    ), stat = "identity") +
+    geom_errorbar(
+      aes(
+        x = cohort,
+        ymin = ymin,
+        ymax = ymax,
+        fill = type
+      ),
+      position = position_dodge(10),
+      alpha = 0.7
+    ) +
+    guides(fill = guide_legend(reverse = TRUE)) +
+    theme(legend.position = "bottom") +
+    theme(legend.title = element_blank(),
+          legend.text = element_text(size = 9)) +
+    
+    scale_x_continuous(limits = c(1700, 1975),
+                       # labels = paste0(seq(1690,1960,30),"-",seq(1700,1970,30)),
+                       breaks = seq(1700, 1975, 50)) +
+    geom_point(
+      data = CohortLE50 %>% filter(Sex == ss),
+      aes(x = cohort, y = `LE actual change`, shape = "Actual change in remaining life expectancy at 50"),
+      size = 0.8
+    ) +
+    facet_wrap( ~ Country, ncol = 4) +
+    xlab("Birth year (end of 10-year period)") +
+    ylab(
+      "Change in remaining life expectancy at age 50 relative to cohort born 10 years earlier (years)"
+    ) +
+    ggtitle(paste0(ss, "s"))
+  
+  p3
+  return(list(p1=p1,p2=p2,p3=p3))
+  
+}
+```
+
+```{r Fig8, echo=FALSE, dev=c('png'), warning=FALSE, dpi=300, fig.width=12, fig.asp=0.6,fig.show='hold', message=FALSE, include=TRUE}
+p = lapply(c("Female","Male"),function(ss)plotFun(ss))
+library(patchwork)
+p1 = p[[1]]$p1 + p[[2]]$p1 + plot_layout(ncol = 2)
+# print(p1)
+p2 = p[[1]]$p2 + p[[2]]$p2 + plot_layout(ncol = 2)
+print(p2)
+p3 = p[[1]]$p3 + p[[2]]$p3 + plot_layout(ncol = 2)
+# print(p3)
+
+```
+
+

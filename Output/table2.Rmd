@@ -1,0 +1,60 @@
+---
+output: word_document
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+library(flextable)
+library(purrr)
+library(tidyverse)
+startAge = 50
+endAge = 100
+# Print to word
+set_flextable_defaults(
+  font.family = "calibri", 
+  font.size = 8,
+  font.color = "black",
+  table.layout = "fixed",
+  digits = 0,
+  theme_fun = "theme_booktabs",
+  padding.bottom  = 1,
+  padding.top = 1,
+  padding.left = 1,
+  padding.right = 1,
+  big.mark = ""
+)
+source("setCountries.R")
+
+temp = map_dfr(countries,function(cc){
+  map_dfr(c("Male","Female"),function(ss){
+  load(paste0('Estimates/', startAge, endAge, '/priorA/c',cc,ss,'B0B1fix.rData'))
+  post_constant = data.frame(Country  = cc,
+                             AIC = result$AIC,
+                             BIC = result$BIC,
+                             Type = 'fix')
+  
+  load(paste0('Estimates/', startAge, endAge, '/priorA/c',cc,ss,'B0B1var.rData'))
+  post_var = data.frame(Country  = cc,
+                        AIC = result$AIC,
+                        BIC = result$BIC,
+                                        Type = 'var')
+  
+  
+  rbind(post_constant,post_var) %>% mutate(Sex = ss)
+})
+})
+
+temp %>% 
+  pivot_wider(names_from = c(Sex,Type), values_from = c(AIC,BIC)) %>%
+  dplyr::select(Country,AIC_Male_fix,AIC_Male_var,BIC_Male_fix,BIC_Male_var,AIC_Female_fix,AIC_Female_var,BIC_Female_fix,BIC_Female_var) %>%
+  flextable() %>%
+  set_header_labels(AIC_Male_fix = "AIC", AIC_Male_var = "AIC", 
+                    BIC_Male_fix = "BIC", BIC_Male_var = "BIC", 
+                    AIC_Female_fix = "AIC", AIC_Female_var = "AIC",
+                    BIC_Female_fix = "BIC", BIC_Female_var = "BIC") %>%
+  add_header_row(colwidths = rep(1,9),values = c("", rep(c("Constant","Variable"),4))) %>%
+  add_header_row(colwidths = c(1,4,4),values = c("", "Male","Female"), top = TRUE) %>%
+  align(align = "center", part = "header") %>%
+  colformat_double(digits = 0) %>%
+  line_spacing(space = 1, part = "all") %>% 
+  autofit()
+```

@@ -7,6 +7,9 @@ source("sampleMH.R")
 if(backtest!=FALSE){
   countries = "Sweden"
 } else {
+  if(robust==TRUE){
+    countries = "USA"
+  }
   source("setCountries.R")
 }
 
@@ -21,10 +24,10 @@ temp = read_dta("Data/Population50.dta") %>%
   dplyr::select(cohort, Country, Sex, Population) %>%
   right_join(map_dfr(c(countries),function(cc){
     map_dfr(c("Male","Female"),function(ss){
-      load(paste0('Estimates/priorA/c',cc,ss,'B0B1var',ifelse(backtest!=FALSE,backtest,''),'.rData'))
+      load(paste0('Estimates/',startAge,endAge,'/priorA/c',cc,ss,'B0B1var',ifelse(backtest!=FALSE,backtest,''),'.rData'))
       numParms = 2
       modelCountry = result$modelCountry
-      load(paste0('MH/MHc',cc,ss,'var',ifelse(backtest!=FALSE,backtest,''),'.rData'))
+      load(paste0('MH/',startAge,endAge,'/MHc',cc,ss,'var',ifelse(backtest!=FALSE,backtest,''),'.rData'))
       z = result$zSample
       Total = sum(!is.na(z[1,]))
       sample = z[,seq(burnin + 1,Total,everyTh)]
@@ -42,8 +45,6 @@ temp = read_dta("Data/Population50.dta") %>%
   }) ) %>%
   data.table()
 
-mumax = 2/3
-
 temp = temp %>% 
   mutate(p = exp((exp(B0)-mumax)/B1),
          stdp = sqrt(Population*p*(1-p)),
@@ -56,11 +57,11 @@ maxLifeCDF = function(x, data){
   p = data %>% 
     rowwise() %>%
     dplyr::mutate(temp = case_when(x<Xi~0,
-                            TRUE~log(1-exp(-mumax*(x-Xi)))),
-           points = list(dbinom(0:maxint,floor(Population),p)),
-           interim = list(case_when(temp==0~0,
-                                    TRUE~exp(seq(0,temp*maxint,temp)))),
-           maxLifeCDF = (sum(points*interim)-points[1]*interim[1])/(sum(points)-points[1])) %>%
+                                   TRUE~log(1-exp(-mumax*(x-Xi)))),
+                  points = list(dbinom(0:maxint,floor(Population),p)),
+                  interim = list(case_when(temp==0~0,
+                                           TRUE~exp(seq(0,temp*maxint,temp)))),
+                  maxLifeCDF = (sum(points*interim)-points[1]*interim[1])/(sum(points)-points[1])) %>%
     group_by() %>%
     dplyr::summarise(maxLifeCDF = sum(maxLifeCDF)/n()) %>%
     pull(maxLifeCDF)
@@ -79,16 +80,16 @@ getPercentile = function(q, data){
     this.x = mean(data$Xi)
     upper = 150
     lower = 80
-    segments = 4
+    segments = 3
     
     error = 10
     iter = 0
-    while(error>0.001&iter<=5){
+    while(error>0.001&iter<=7){
       x = seq(lower,upper,(upper-lower)/segments)
       fValues = sapply(x,FUN=maxLifeCDF, data=data)
       
-      upper = x[which(cumsum(fValues>q)==1)]
-      lower = x[which(cumsum(fValues>q)==1)-1]
+      upper = min(x[which(cumsum(fValues>q)==1)])
+      lower = min(x[which(cumsum(fValues>q)==1)-1])
       this.x = (upper + lower)/2
       error = abs(maxLifeCDF(this.x, data) - q)
       iter = iter + 1
@@ -108,7 +109,6 @@ for(cc in countries){
         dplyr::mutate(lower = map_dbl(data, ~ getPercentile(0.025, data=.x)),
                       upper = map_dbl(data, ~ getPercentile(0.975, data=.x))) %>%
         dplyr::select(-data) %>%
-          saveRDS(file=paste0("Estimates/CI/",cc,ss,"CI",ifelse(backtest!=FALSE,backtest,''),".rds"))
-    )
+          saveRDS(file=paste0(paste0("Estimates/",startAge,endAge,"/CI/",cc,ss,"CI",ifelse(backtest!=FALSE,backtest,''),ifelse(mumax==1,'One',''),".rds")))    )
   }
 }

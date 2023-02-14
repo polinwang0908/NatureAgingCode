@@ -86,7 +86,7 @@ metropolisHastingsTest = function(dd,ff='var',numSim=10^5,report=10^3,backtest=F
   
   TT = TT %>% filter(Country==cc,Sex==ss)
   
-  load(paste0('Estimates/priorA/c',cc,ss,'B0B1',ff,ifelse(backtest!=FALSE,backtest,''),'.rData'))
+  load(paste0('Estimates/',startAge,endAge,'/priorA/c',cc,ss,'B0B1',ff,ifelse(backtest!=FALSE,backtest,''),'.rData'))
   x = result$x
   sigma = result$sigma
   hessian = result$hessian
@@ -133,7 +133,7 @@ metropolisHastingsTest = function(dd,ff='var',numSim=10^5,report=10^3,backtest=F
       show(paste0(cc,ss,i,'\n'))
       show(paste0('acceptance = ',accepted/i,'\n'))
       result = list(zSample=zSample,accepted=accepted)
-      save(result,file=paste0('MH/MHc',cc,ss,ff,ifelse(backtest!=FALSE,backtest,''),'.rData'))
+      save(result,file=paste0('MH/',startAge,endAge,'MHc',cc,ss,ff,ifelse(backtest!=FALSE,backtest,''),'.rData'))
     }
   }
   

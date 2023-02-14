@@ -1,5 +1,5 @@
-This code estimates the model in the paper, "Longevity records have not increased in 25
-years. So has the human lifespan reached its limit?", and produces figures and tables 
+This code estimates the model in the paper, "Mortality postponement and compression at 
+older-ages in human cohorts", and produces figures and tables 
 based off the estimation.
 
 ==========================================================================================
@@ -40,9 +40,9 @@ based off the estimation.
 	7. main.R: 
 	This is the main model execution.
 	
-	8. mainSingleCore.R:
-	This is the non-parallel version of main.R, which does exactly the same thing but
-	using only single core.
+	8. mainMulticore.R:
+	This is the parallel version of main.R, which does exactly the same thing but use 
+	multiple cores.
 
 	9. metropolisHastingsTest.R: 
 	This script takes the model estimates and runs Metropolis-Hastings algorithm to sample
@@ -106,17 +106,22 @@ based off the estimation.
 	5. Calculate Life Expectancies: 
 	This uses the mortality data to calculate the life expectancies.
 
+	6. Robustness:
+	This uses US as an example to test the result sensitivity to the change of data use: 
+	age 50-100 to 50-110 and assumed mortality plateau from 2/3 to 1.
+	
 	6. Output: 
 	All figures are tables in the paper are produced here using above calculations and
 	stored in the "Output" folder. Output contains word documents including Figure 2, 3,
-	4, 5, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, and Table M1 and S1.
+	4, 5, 6, 7, 8, 9, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, and
+	Table 1 and 2.
 
-* Note: Some of the executions are written in "main.R" to run in parallel for the sake of 
-        speed. An alternative is provided as "mainSingleCore.R" that works exactly the
-        same with a single core. Approximate run time provided above can vary 
-        significantly due to the length of data available, hence the number of parameters 
-        to estimate (e.g. Sweden takes the longest). The executions have no run time 
-        approximated above usually take seconds to finish. 
+* Note: Some of the executions are written in "mainMulticore.R" to run in parallel for the
+		sake of speed. An alternative is provided as "main.R" that works exactly the same 
+		with a single core. Approximate run time provided above can vary significantly due
+		to the length of data available, hence the number of parameters to estimate (e.g. 
+		Sweden takes the longest). The executions have no run time approximated above 
+		usually take seconds to finish. 
         
         The run time approximation is based on the following computer specs:
 

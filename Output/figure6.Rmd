@@ -1,0 +1,164 @@
+---
+output:
+  word_document:
+    keep_md: true
+---
+
+```{r, echo = FALSE, results = 'asis', warning=FALSE, message=FALSE}
+rm(list=ls())
+library(haven)
+library(ggrepel)
+library(expint)
+library(latex2exp)
+library(tidyverse)
+
+startAge = 50
+endAge = 100
+countries = "Sweden"
+source("sampleMH.R")
+
+LE50 = function(lambda,delta){
+  # b0:lambda 
+  # b1:delta
+  (1/delta)*
+    exp(exp(lambda)/delta)*
+    (expint::expint(exp(lambda)/delta)-expint::expint(2/3/delta))+
+    1.5*exp((exp(lambda)-2/3)/delta)
+} 
+
+p1Data = map_dfr(c(countries),function(cc){
+  map_dfr(c("Male","Female"),function(ss){
+    load(paste0('Estimates/', startAge, endAge, '/priorC/c', cc, ss, 'B0B1var.rData'))
+    numParms = 2
+    x = result$x
+    sigma = result$sigma
+    modelCountry = result$modelCountry
+    numAllCohort = modelCountry[[1]]$number
+    priorC = data.frame(t(matrix(x,numParms))) %>% 
+      `colnames<-`(c("B0","B1")) %>%
+      mutate(cohort = modelCountry[[1]]$cohort,
+             Prior = "Prior C")
+    
+    load(paste0('Estimates/', startAge, endAge, '/priorB/c', cc, ss, 'B0B1var.rData'))
+    numParms = 2
+    x = result$x
+    sigma = result$sigma
+    modelCountry = result$modelCountry
+    numAllCohort = modelCountry[[1]]$number
+    priorB = data.frame(t(matrix(x,numParms))) %>% 
+      `colnames<-`(c("B0","B1")) %>%
+      mutate(cohort = modelCountry[[1]]$cohort,
+             Prior = "Prior B")
+    
+    load(paste0('Estimates/', startAge, endAge, '/priorA/c', cc, ss, 'B0B1var.rData'))
+    numParms = 2
+    x = result$x
+    sigma = result$sigma
+    modelCountry = result$modelCountry
+    numAllCohort = modelCountry[[1]]$number
+    prior_allcohorts = data.frame(t(matrix(x,numParms))) %>% 
+      `colnames<-`(c("B0","B1")) %>%
+      mutate(cohort = modelCountry[[1]]$cohort,
+             Prior = "Prior A")
+    
+    temp = do.call(bind_rows, list(prior_allcohorts,priorB,priorC)) %>%
+      mutate(Sex = ss,
+             Country = cc)
+  })
+})
+
+p3Data = map_dfr(c(countries),function(cc){
+  map_dfr(c("Male","Female"),function(ss){
+    load(paste0('Estimates/', startAge, endAge, '/priorA/c', cc, ss, 'B0B1var.rData'))
+    numParms = 2
+    modelCountry = result$modelCountry
+    load(paste0('MH/', startAge, endAge,'/MHc',cc,ss,'var.rData'))
+    z = result$zSample
+    Total = sum(!is.na(z[1,]))
+    sample = z[,seq(burnin + 1,Total,everyTh)]
+    xSample = map_dfr(1:dim(sample)[2],function(i){
+      parms = t(matrix(sample[1:(NROW(sample)-2),i],2)) %>%
+        data.frame() %>% 
+        `colnames<-`(c("B0","B1")) %>%
+        mutate(Country = cc,
+               Sex = ss,
+               cohort = modelCountry[[1]]$cohort,
+               sim = i
+               )
+      
+    })    
+  })
+}) %>%
+  group_by(Country, Sex, sim) %>%
+  dplyr::mutate(minCohort = min(cohort),
+         minDecade = minCohort+10-minCohort%%10,
+         A1 = case_when(cohort==minDecade~B1[cohort==minCohort],
+                        cohort<=1960~dplyr::lag(B1, n = 10, order_by = cohort),
+                        TRUE~B1[cohort==1960]),
+         A0 = case_when(cohort==minDecade~B0[cohort==minCohort],
+                        cohort<=1960~dplyr::lag(B0, n = 10, order_by = cohort),
+                        TRUE~B0[cohort==1960]),
+         gamma0 = B0,
+         gamma1 = A1*(log(2/3)-B0)/(log(2/3)-A0),
+         compression = LE50(gamma0,gamma1)-LE50(A0,A1),
+         postponement = LE50(B0,B1)-LE50(gamma0,gamma1),
+         gamma = 50 + (log(2/3)-B0)/B1
+  ) 
+
+MaximumLivedPeople = read_dta("Data/MaximumLivedPeopleAll.dta") %>%
+  dplyr::mutate(Country = dplyr::recode(dcountry, 
+                                        "AUT" = "Austria",
+                                        "AUS" = "Australia",
+                                        "BEL" = "Belgium",
+                                        "CAN" = "Canada",
+                                        "DNK" = "Denmark",
+                                        "FIN" = "Finland",
+                                        "FRA" = "France",
+                                        "DEU" = "Germany",
+                                        "IRE" = "Ireland",
+                                        "ITA" = "Italy",
+                                        "JPN" = "Japan",
+                                        "JAP" = "Japan",
+                                        "NOR" = "Norway",
+                                        "ESP" = "Spain",
+                                        "SWE" = "Sweden",
+                                        "SWZ" = "Switzerland",
+                                        "NET" = "Netherlands",
+                                        "POR" = "Portugal",
+                                        "USA" = "USA",
+                                        "EW" = "UK"),
+                Sex = dplyr::recode(sex, "F" = "Female",
+                                    "M" = "Male"), 
+                alive = factor(alive, levels = c("N", "Y"))
+  ) %>%
+  dplyr::rename(cohort = byear) %>% 
+  dplyr::rename(Alive = alive) %>% 
+  dplyr::select(Sex, Country, maxage, cohort, Alive)
+
+merged_all_double = map_dfr(c(countries), function(cc) {
+  map_dfr(c("Male", "Female"), function(ss) {
+    read_rds(paste0("Estimates/" , startAge, endAge, "/CI/", cc, ss, "CI.rds")) 
+  })
+}) %>% drop_na()
+
+gammas = p3Data %>%
+  group_by(Country, Sex, cohort) %>%
+  dplyr::summarise(upper = quantile(gamma, 0.975),
+                   lower = quantile(gamma, 0.025))
+
+CohortLE50 = read_rds("Data/CohortLE50.rds") %>%
+  dplyr::rename("cohort" = "YoB") %>%
+  dplyr::group_by(Country, Sex) %>%
+  dplyr::mutate(minCohort = min(cohort),
+                minDecade = minCohort + 10 - minCohort%%10,
+                lageLE =  case_when(cohort==minDecade~LE50[cohort==minCohort],
+                                    TRUE~dplyr::lag(LE50, n = 10, order_by = cohort)),
+                `LE actual change` = LE50 -lageLE) %>%
+ dplyr::filter(cohort%in%seq(1700,1970,10))
+```
+
+```{r Fig6, echo=FALSE, dev=c('png'), fig.asp=1.2, fig.show='hold', fig.width=12, message=FALSE, warning=FALSE, dpi=300}
+for(cc in c(countries)){
+  source("plotCI.R")
+}
+```
