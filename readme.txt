@@ -1,6 +1,5 @@
 This code estimates the model in the paper, "Mortality postponement and compression at 
-older-ages in human cohorts", and produces figures and tables 
-based off the estimation.
+older-ages in human cohorts", and produces figures and tables based off the estimation.
 
 ==========================================================================================
 * There are four folders where the data and results are stored:
