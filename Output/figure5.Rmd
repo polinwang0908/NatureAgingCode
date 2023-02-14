@@ -1,7 +1,7 @@
 ---
 output:
   word_document:
-    keep_md: true
+    keep_md: false
 ---
 
 ```{r Fig5, dev=c('png'), echo=FALSE, fig.asp=0.5, fig.show='hold', fig.width=12, message=FALSE, warning=FALSE, dpi=300}

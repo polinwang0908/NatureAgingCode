@@ -1,7 +1,7 @@
 ---
 output:
   word_document:
-    keep_md: true
+    keep_md: false
 ---
 
 ```{r, echo = FALSE, results = 'asis', warning=FALSE, message=FALSE}
